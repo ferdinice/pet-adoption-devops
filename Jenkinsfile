@@ -9,6 +9,7 @@ pipeline {
     options {
         timestamps()
         disableConcurrentBuilds()
+        skipDefaultCheckout(true)
     }
 
     stages {
