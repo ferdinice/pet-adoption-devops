@@ -42,6 +42,16 @@ pipeline {
     }
 }
 
+stage('Quality Gate') {
+    steps {
+        echo 'Waiting for the SonarQube Quality Gate result'
+
+        timeout(time: 5, unit: 'MINUTES') {
+            waitForQualityGate abortPipeline: true
+        }
+    }
+}
+
         stage('Verify Artifact') {
             steps {
                 echo 'Confirming that Maven created the application WAR file'
