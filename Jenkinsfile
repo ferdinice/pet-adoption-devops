@@ -74,7 +74,20 @@ stage('Quality Gate') {
                 '''
             }
         }
+stage('Trivy Image Scan') {
+    steps {
+        echo "Scanning Docker image ${APPLICATION_NAME}:${IMAGE_TAG} for vulnerabilities"
 
+        sh '''
+            trivy image \
+              --severity HIGH,CRITICAL \
+              --ignore-unfixed \
+              --exit-code 0 \
+              --no-progress \
+              ${APPLICATION_NAME}:${IMAGE_TAG}
+        '''
+    }
+}
         stage('Verify Docker Image') {
             steps {
                 echo 'Confirming that the Docker image exists'
