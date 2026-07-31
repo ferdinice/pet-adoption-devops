@@ -28,6 +28,20 @@ pipeline {
             }
         }
 
+        stage('SonarQube Analysis') {
+    steps {
+        echo 'Analyzing source code quality and security with SonarQube'
+
+        withSonarQubeEnv('SonarQube') {
+            sh '''
+                ./mvnw sonar:sonar \
+                  -Dsonar.projectKey=pet-adoption \
+                  -Dsonar.projectName="Pet Adoption"
+            '''
+        }
+    }
+}
+
         stage('Verify Artifact') {
             steps {
                 echo 'Confirming that Maven created the application WAR file'
