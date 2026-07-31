@@ -28,13 +28,13 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis') {
+    stage('SonarQube Analysis') {
     steps {
         echo 'Analyzing source code quality and security with SonarQube'
 
         withSonarQubeEnv('SonarQube') {
             sh '''
-                ./mvnw sonar:sonar \
+                ./mvnw org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
                   -Dsonar.projectKey=pet-adoption \
                   -Dsonar.projectName="Pet Adoption"
             '''
