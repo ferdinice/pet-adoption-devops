@@ -34,7 +34,12 @@ pipeline {
                 sh 'ls -lh target/spring-petclinic-2.4.2.war'
             }
         }
-
+        stage('Archive Artifact') {
+            steps {
+                echo 'Saving the WAR file as a Jenkins build artifact'
+                archiveArtifacts artifacts: 'target/spring-petclinic-2.4.2.war', fingerprint: true
+                    }
+        }
         stage('Build Docker Image') {
             steps {
                 echo "Building Docker image ${APPLICATION_NAME}:${IMAGE_TAG}"
