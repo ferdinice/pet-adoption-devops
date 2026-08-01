@@ -5,11 +5,15 @@ pipeline {
         APPLICATION_NAME = 'pet-adoption'
         IMAGE_TAG        = "build-${BUILD_NUMBER}"
 
+        JAVA_HOME = '/usr/lib/jvm/java-17-openjdk-amd64'
+        PATH      = "${JAVA_HOME}/bin:${env.PATH}"
+
         AWS_REGION     = 'eu-west-3'
         AWS_ACCOUNT_ID = '740994137090'
         ECR_REPOSITORY = 'enterprise-devops-platform/pet-adoption'
         ECR_REGISTRY   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
         ECR_IMAGE      = "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+        
     }
 
     options {
@@ -25,6 +29,17 @@ pipeline {
                 checkout scm
             }
         }
+
+        stage('Verify Build Environment') {
+    steps {
+        echo 'Confirming the Java build environment'
+        sh '''
+            java -version
+            javac -version
+            echo "JAVA_HOME=${JAVA_HOME}"
+        '''
+    }
+}
 
         stage('Build and Test') {
             steps {
