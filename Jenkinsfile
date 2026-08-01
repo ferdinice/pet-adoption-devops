@@ -2,9 +2,15 @@ pipeline {
     agent any
 
     environment {
-        APPLICATION_NAME = 'pet-adoption'
-        IMAGE_TAG        = "build-${BUILD_NUMBER}"
-    }
+    APPLICATION_NAME = 'pet-adoption'
+    IMAGE_TAG        = "build-${BUILD_NUMBER}"
+
+    AWS_REGION       = 'eu-west-3'
+    AWS_ACCOUNT_ID   = '740994137090'
+    ECR_REPOSITORY   = 'enterprise-devops-platform/pet-adoption'
+    ECR_REGISTRY     = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+    ECR_IMAGE        = "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+}
 
     options {
         timestamps()
@@ -85,6 +91,39 @@ stage('Trivy Image Scan') {
               --exit-code 0 \
               --no-progress \
               ${APPLICATION_NAME}:${IMAGE_TAG}
+        '''
+    }
+}
+
+stage('Push Image to ECR') {
+    steps {
+        echo "Authenticating to Amazon ECR and pushing ${ECR_IMAGE}"
+
+        sh '''
+            aws ecr get-login-password \
+              --region ${AWS_REGION} \
+            | docker login \
+              --username AWS \
+              --password-stdin ${ECR_REGISTRY}
+
+            docker tag \
+              ${APPLICATION_NAME}:${IMAGE_TAG} \
+              ${ECR_IMAGE}
+
+            docker push ${ECR_IMAGE}
+        '''
+    }
+}
+
+stage('Verify Image in ECR') {
+    steps {
+        echo "Confirming that ${IMAGE_TAG} exists in Amazon ECR"
+
+        sh '''
+            aws ecr describe-images \
+              --repository-name ${ECR_REPOSITORY} \
+              --image-ids imageTag=${IMAGE_TAG} \
+              --region ${AWS_REGION}
         '''
     }
 }
