@@ -5,6 +5,11 @@ metadata:
 spec:
   ingressClassName: nginx
 
+  tls:
+    - hosts:
+        - petadoption.ferdeve.fit
+      secretName: petadoption-tls
+
   rules:
     - host: petadoption.ferdeve.fit
       http:
