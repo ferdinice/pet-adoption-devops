@@ -13,6 +13,10 @@ pipeline {
         ECR_REPOSITORY = 'enterprise-devops-platform/pet-adoption'
         ECR_REGISTRY   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
         ECR_IMAGE      = "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+
+        GITOPS_REPO_URL = 'https://github.com/ferdinice/enterprise-gitops.git'
+GITOPS_BRANCH   = 'main'
+GITOPS_PATH     = 'pet-adoption/overlays/dev/kustomization.yaml'
         
     }
 
@@ -147,10 +151,61 @@ pipeline {
                       --repository-name ${ECR_REPOSITORY} \
                       --image-ids imageTag=${IMAGE_TAG} \
                       --region ${AWS_REGION}
+                      
                 '''
             }
         }
 
+        
+
+        stage('Update GitOps Repository') {
+    steps {
+        echo "Updating GitOps desired state to ${IMAGE_TAG}"
+
+        withCredentials([
+            usernamePassword(
+                credentialsId: 'github-gitops-credentials',
+                usernameVariable: 'GIT_USERNAME',
+                passwordVariable: 'GIT_TOKEN'
+            )
+        ]) {
+            sh '''
+                set -e
+
+                rm -rf enterprise-gitops
+
+                git clone \
+                  --branch ${GITOPS_BRANCH} \
+                  https://${GIT_USERNAME}:${GIT_TOKEN}@${GITOPS_REPO_URL#https://} \
+                  enterprise-gitops
+
+                cd enterprise-gitops
+
+                git config user.name "jenkins"
+                git config user.email "jenkins@enterprise-devops.local"
+
+                sed -i \
+                  "s/newTag: .*/newTag: ${IMAGE_TAG}/" \
+                  ${GITOPS_PATH}
+
+                echo "Updated image tag:"
+                grep "newTag:" ${GITOPS_PATH}
+
+                if git diff --quiet; then
+                    echo "GitOps repository already references ${IMAGE_TAG}. No commit required."
+                    exit 0
+                fi
+
+                git add ${GITOPS_PATH}
+
+                git commit \
+                  -m "Deploy pet-adoption ${IMAGE_TAG}"
+
+                git push origin ${GITOPS_BRANCH}
+            '''
+        }
+    }
+}
         stage('Verify Docker Image') {
             steps {
                 echo 'Confirming that the local Docker image exists'
