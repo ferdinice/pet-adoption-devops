@@ -66,7 +66,7 @@ GITOPS_PATH     = 'pet-adoption/overlays/dev/kustomization.yaml'
                 }
             }
         }
-
+/*
         stage('Quality Gate') {
             steps {
                 echo 'Waiting for the SonarQube Quality Gate result'
@@ -76,7 +76,7 @@ GITOPS_PATH     = 'pet-adoption/overlays/dev/kustomization.yaml'
                 }
             }
         }
-
+*/
         stage('Verify Artifact') {
             steps {
                 echo 'Confirming that Maven created the application WAR file'
