@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         APPLICATION_NAME = 'pet-adoption'
-        IMAGE_TAG        = "build-${BUILD_NUMBER}"
+        
 
         JAVA_HOME = '/usr/lib/jvm/java-17-openjdk-amd64'
         PATH      = "${JAVA_HOME}/bin:${env.PATH}"
@@ -12,7 +12,7 @@ pipeline {
         AWS_ACCOUNT_ID = '740994137090'
         ECR_REPOSITORY = 'enterprise-devops-platform/pet-adoption'
         ECR_REGISTRY   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-        ECR_IMAGE      = "${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+        
 
         GITOPS_REPO_URL = 'https://github.com/ferdinice/enterprise-gitops.git'
 GITOPS_BRANCH   = 'main'
@@ -27,12 +27,26 @@ GITOPS_PATH     = 'pet-adoption/overlays/dev/kustomization.yaml'
     }
 
     stages {
-        stage('Checkout') {
-            steps {
-                echo 'Downloading the application source code from GitHub'
-                checkout scm
-            }
+       stage('Checkout') {
+    steps {
+        echo 'Downloading the application source code from GitHub'
+
+        checkout scm
+
+        script {
+            env.GIT_SHORT_SHA = sh(
+                script: 'git rev-parse --short=7 HEAD',
+                returnStdout: true
+            ).trim()
+
+            env.IMAGE_TAG = "build-${BUILD_NUMBER}-${env.GIT_SHORT_SHA}"
+            env.ECR_IMAGE = "${env.ECR_REGISTRY}/${env.ECR_REPOSITORY}:${env.IMAGE_TAG}"
+
+            echo "Git commit: ${env.GIT_SHORT_SHA}"
+            echo "Image tag: ${env.IMAGE_TAG}"
         }
+    }
+}
 
         stage('Verify Build Environment') {
     steps {
