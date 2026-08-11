@@ -14,10 +14,9 @@ pipeline {
         ECR_REGISTRY   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
         
 
-        GITOPS_REPO_URL = 'https://github.com/ferdinice/enterprise-gitops.git'
-GITOPS_BRANCH   = 'main'
-GITOPS_PATH     = 'pet-adoption/overlays/dev/kustomization.yaml'
-        
+        GITOPS_REPO_URL = 'https://github.com/ferdinice/enterprise-devops-platform.git'
+        GITOPS_BRANCH   = 'main'
+        GITOPS_PATH     = 'gitops/pet-adoption/overlays/dev/kustomization.yaml'
     }
 
     options {
@@ -186,14 +185,14 @@ GITOPS_PATH     = 'pet-adoption/overlays/dev/kustomization.yaml'
             sh '''
                 set -e
 
-                rm -rf enterprise-gitops
+                rm -rf platform-gitops
 
                 git clone \
                   --branch ${GITOPS_BRANCH} \
                   https://${GIT_USERNAME}:${GIT_TOKEN}@${GITOPS_REPO_URL#https://} \
-                  enterprise-gitops
+                  platform-gitops
 
-                cd enterprise-gitops
+                cd platform-gitops
 
                 git config user.name "jenkins"
                 git config user.email "jenkins@enterprise-devops.local"
