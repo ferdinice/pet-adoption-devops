@@ -131,15 +131,31 @@ pipeline {
                     echo "  Environment: ${DEPLOY_ENVIRONMENT}"
                     echo "  Image tag:   ${IMAGE_TAG}"
 
+                    cat > /tmp/ansible-deploy-commands.json <<EOF
+{
+  "commands": [
+    "set -e",
+    "sudo -iu ubuntu git -C /opt/ansible/repo fetch origin",
+    "sudo -iu ubuntu git -C /opt/ansible/repo reset --hard origin/main",
+    "sudo -iu ubuntu ansible-playbook /opt/ansible/repo/module/ansible/playbooks/deploy.yml -e target_env=${DEPLOY_ENVIRONMENT} -e app_image_tag=${IMAGE_TAG}"
+  ]
+}
+EOF
+
+                    echo "Submitting deployment command to Ansible controller"
+
                     COMMAND_ID=$(aws ssm send-command \
                       --instance-ids "${ANSIBLE_INSTANCE_ID}" \
                       --document-name "AWS-RunShellScript" \
-                      --parameters "commands=[\"set -e\",\"sudo -iu ubuntu git -C /opt/ansible/repo fetch origin\",\"sudo -iu ubuntu git -C /opt/ansible/repo reset --hard origin/main\",\"sudo -iu ubuntu ansible-playbook /opt/ansible/repo/module/ansible/playbooks/deploy.yml -e target_env=${DEPLOY_ENVIRONMENT} -e app_image_tag=${IMAGE_TAG}\"]" \
+                      --parameters file:///tmp/ansible-deploy-commands.json \
                       --region "${AWS_REGION}" \
                       --query 'Command.CommandId' \
                       --output text)
 
                     echo "Ansible SSM command: ${COMMAND_ID}"
+
+                    test -n "${COMMAND_ID}"
+                    test "${COMMAND_ID}" != "None"
 
                     set +e
                     aws ssm wait command-executed \
@@ -157,6 +173,7 @@ pipeline {
                       --output text)
 
                     echo "Deployment command status: ${STATUS}"
+                    echo "SSM waiter exit code: ${WAIT_RC}"
 
                     echo "=== ANSIBLE DEPLOYMENT OUTPUT ==="
 
