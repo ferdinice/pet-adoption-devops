@@ -1,0 +1,141 @@
+pipeline {
+    agent any
+
+    environment {
+        APPLICATION_NAME = 'pet-adoption'
+        NEXUS_REGISTRY   = 'registry.ferdeve.fit'
+        NEXUS_REPOSITORY = 'pet-adoption-docker'
+        AWS_REGION       = 'eu-west-3'
+        NEXUS_USERNAME   = 'nexus-ci-writer'
+        NEXUS_PARAMETER  = '/devops-platform/nexus/ci-writer-password'
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+
+                script {
+                    env.GIT_SHORT_SHA = sh(
+                        script: 'git rev-parse --short HEAD',
+                        returnStdout: true
+                    ).trim()
+
+                    env.IMAGE_TAG =
+                        "build-${BUILD_NUMBER}-${env.GIT_SHORT_SHA}"
+
+                    env.NEXUS_IMAGE =
+                        "${NEXUS_REGISTRY}/${NEXUS_REPOSITORY}:${IMAGE_TAG}"
+                }
+
+                echo "Image tag: ${IMAGE_TAG}"
+            }
+        }
+
+        stage('Build and Test') {
+            steps {
+                sh './mvnw clean verify'
+            }
+        }
+
+        stage('Verify Artifact') {
+            steps {
+                sh '''
+                    test -f target/spring-petclinic-2.4.2.war
+                    echo "PASS: WAR artifact exists"
+                '''
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh '''
+                    docker build \
+                      -t ${APPLICATION_NAME}:${IMAGE_TAG} \
+                      .
+                '''
+            }
+        }
+
+        stage('Authenticate to Nexus') {
+            steps {
+                sh '''
+                    set +x
+
+                    NEXUS_PASSWORD=$(aws ssm get-parameter \
+                      --name "${NEXUS_PARAMETER}" \
+                      --with-decryption \
+                      --region "${AWS_REGION}" \
+                      --query Parameter.Value \
+                      --output text)
+
+                    printf '%s' "${NEXUS_PASSWORD}" | \
+                      docker login \
+                        "${NEXUS_REGISTRY}" \
+                        --username "${NEXUS_USERNAME}" \
+                        --password-stdin
+
+                    unset NEXUS_PASSWORD
+                '''
+            }
+        }
+
+        stage('Push Image to Nexus') {
+            steps {
+                sh '''
+                    docker tag \
+                      ${APPLICATION_NAME}:${IMAGE_TAG} \
+                      ${NEXUS_IMAGE}
+
+                    docker push ${NEXUS_IMAGE}
+                '''
+            }
+        }
+
+        stage('Verify Nexus Image') {
+            steps {
+                sh '''
+                    set +x
+
+                    NEXUS_PASSWORD=$(aws ssm get-parameter \
+                      --name "${NEXUS_PARAMETER}" \
+                      --with-decryption \
+                      --region "${AWS_REGION}" \
+                      --query Parameter.Value \
+                      --output text)
+
+                    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+                      -u "${NEXUS_USERNAME}:${NEXUS_PASSWORD}" \
+                      -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+                      "https://${NEXUS_REGISTRY}/v2/${NEXUS_REPOSITORY}/manifests/${IMAGE_TAG}")
+
+                    unset NEXUS_PASSWORD
+
+                    echo "Nexus manifest response: HTTP=${HTTP_CODE}"
+                    test "${HTTP_CODE}" = "200"
+
+                    echo "PASS: ${NEXUS_IMAGE} exists in Nexus"
+                '''
+            }
+        }
+
+    }
+
+    post {
+        success {
+            echo "Pipeline succeeded."
+            echo "Nexus image: ${NEXUS_IMAGE}"
+        }
+
+        failure {
+            echo "Pipeline failed. Review the failed stage."
+        }
+
+        always {
+            sh '''
+                docker logout ${NEXUS_REGISTRY} >/dev/null 2>&1 || true
+            '''
+        }
+    }
+}
