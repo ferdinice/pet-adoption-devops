@@ -162,6 +162,7 @@ pipeline {
     "set -e",
     "sudo -iu ubuntu git -C /opt/ansible/repo fetch origin",
     "sudo -iu ubuntu git -C /opt/ansible/repo reset --hard origin/main",
+    "sudo -iu ubuntu ansible-playbook /opt/ansible/repo/module/ansible/playbooks/configure.yml -e target_env=${DEPLOY_ENVIRONMENT}",
     "sudo -iu ubuntu ansible-playbook /opt/ansible/repo/module/ansible/playbooks/deploy.yml -e target_env=${DEPLOY_ENVIRONMENT} -e app_image_tag=${IMAGE_TAG}"
   ]
 }
