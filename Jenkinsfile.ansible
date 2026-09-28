@@ -8,7 +8,6 @@ pipeline {
         AWS_REGION       = 'eu-west-3'
         NEXUS_USERNAME      = 'nexus-ci-writer'
         NEXUS_PARAMETER     = '/devops-platform/nexus/ci-writer-password'
-        ANSIBLE_INSTANCE_ID = 'i-0dc3e94c09a6d129e'
         DEPLOY_ENVIRONMENT  = 'stage'
     }
 
@@ -130,6 +129,32 @@ pipeline {
                     echo "Triggering deployment:"
                     echo "  Environment: ${DEPLOY_ENVIRONMENT}"
                     echo "  Image tag:   ${IMAGE_TAG}"
+
+                    echo "Discovering running Ansible controller by AWS tags"
+
+                    ANSIBLE_INSTANCE_IDS=$(aws ec2 describe-instances \
+                      --region "${AWS_REGION}" \
+                      --filters \
+                        "Name=tag:Project,Values=ansible-devops-platform" \
+                        "Name=tag:Role,Values=ansible" \
+                        "Name=tag:Environment,Values=management" \
+                        "Name=instance-state-name,Values=running" \
+                      --query 'Reservations[].Instances[].InstanceId' \
+                      --output text)
+
+                    CONTROLLER_COUNT=$(printf '%s\n' "${ANSIBLE_INSTANCE_IDS}" | awk 'NF {count += NF} END {print count+0}')
+
+                    echo "Matching Ansible controllers: ${CONTROLLER_COUNT}"
+
+                    if [ "${CONTROLLER_COUNT}" -ne 1 ]; then
+                        echo "FAIL: expected exactly one running Ansible controller, found ${CONTROLLER_COUNT}"
+                        echo "Matches: ${ANSIBLE_INSTANCE_IDS:-none}"
+                        exit 1
+                    fi
+
+                    ANSIBLE_INSTANCE_ID="${ANSIBLE_INSTANCE_IDS}"
+
+                    echo "Discovered Ansible controller: ${ANSIBLE_INSTANCE_ID}"
 
                     cat > /tmp/ansible-deploy-commands.json <<EOF
 {
