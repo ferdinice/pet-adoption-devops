@@ -273,6 +273,143 @@ EOF
             }
         }
 
+
+        stage('Approve Production Deployment') {
+            steps {
+                timeout(time: 30, unit: 'MINUTES') {
+                    input message: 'Promote the verified staging image to production?',
+                          ok: 'Approve Production Deployment',
+                          submitter: 'admin'
+                }
+            }
+        }
+
+        stage('Deploy to Production via Ansible') {
+            environment {
+                DEPLOY_ENVIRONMENT = 'prod'
+            }
+            steps {
+                sh '''
+                    set -eu
+
+                    echo "Triggering deployment:"
+                    echo "  Environment: ${DEPLOY_ENVIRONMENT}"
+                    echo "  Image tag:   ${IMAGE_TAG}"
+
+                    echo "Discovering running Ansible controller by AWS tags"
+
+                    ANSIBLE_INSTANCE_IDS=$(aws ec2 describe-instances \
+                      --region "${AWS_REGION}" \
+                      --filters \
+                        "Name=tag:Project,Values=ansible-devops-platform" \
+                        "Name=tag:Role,Values=ansible" \
+                        "Name=tag:Environment,Values=management" \
+                        "Name=instance-state-name,Values=running" \
+                      --query 'Reservations[].Instances[].InstanceId' \
+                      --output text)
+
+                    CONTROLLER_COUNT=$(printf '%s\n' "${ANSIBLE_INSTANCE_IDS}" | awk 'NF {count += NF} END {print count+0}')
+
+                    echo "Matching Ansible controllers: ${CONTROLLER_COUNT}"
+
+                    if [ "${CONTROLLER_COUNT}" -ne 1 ]; then
+                        echo "FAIL: expected exactly one running Ansible controller, found ${CONTROLLER_COUNT}"
+                        echo "Matches: ${ANSIBLE_INSTANCE_IDS:-none}"
+                        exit 1
+                    fi
+
+                    ANSIBLE_INSTANCE_ID="${ANSIBLE_INSTANCE_IDS}"
+
+                    echo "Discovered Ansible controller: ${ANSIBLE_INSTANCE_ID}"
+
+                    cat > /tmp/ansible-deploy-commands.json <<EOF
+{
+  "commands": [
+    "set -e",
+    "sudo -iu ubuntu git -C /opt/ansible/repo fetch origin",
+    "sudo -iu ubuntu git -C /opt/ansible/repo reset --hard origin/main",
+    "sudo -iu ubuntu ansible-playbook /opt/ansible/repo/module/ansible/playbooks/configure.yml -e target_env=${DEPLOY_ENVIRONMENT}",
+    "sudo -iu ubuntu ansible-playbook /opt/ansible/repo/module/ansible/playbooks/deploy.yml -e target_env=${DEPLOY_ENVIRONMENT} -e app_image_tag=${IMAGE_TAG}"
+  ]
+}
+EOF
+
+                    echo "Submitting deployment command to Ansible controller"
+
+                    COMMAND_ID=$(aws ssm send-command \
+                      --instance-ids "${ANSIBLE_INSTANCE_ID}" \
+                      --document-name "AWS-RunShellScript" \
+                      --parameters file:///tmp/ansible-deploy-commands.json \
+                      --region "${AWS_REGION}" \
+                      --query 'Command.CommandId' \
+                      --output text)
+
+                    echo "Ansible SSM command: ${COMMAND_ID}"
+
+                    test -n "${COMMAND_ID}"
+                    test "${COMMAND_ID}" != "None"
+
+                    # Wait up to 30 minutes for Ansible deployment
+                    MAX_POLLS=120
+                    POLL_SECONDS=15
+                    POLL=0
+                    STATUS=Pending
+
+                    while [ "${POLL}" -lt "${MAX_POLLS}" ]; do
+                        STATUS=$(aws ssm get-command-invocation \
+                          --command-id "${COMMAND_ID}" \
+                          --instance-id "${ANSIBLE_INSTANCE_ID}" \
+                          --region "${AWS_REGION}" \
+                          --query Status \
+                          --output text) || STATUS=Pending
+
+                        echo "Ansible deployment: ${STATUS} (poll $((POLL + 1))/${MAX_POLLS})"
+
+                        case "${STATUS}" in
+                            Success|Failed|Cancelled|TimedOut)
+                                break
+                                ;;
+                            Pending|InProgress|Delayed|Cancelling)
+                                sleep "${POLL_SECONDS}"
+                                ;;
+                            *)
+                                echo "Unexpected SSM status: ${STATUS}"
+                                break
+                                ;;
+                        esac
+
+                        POLL=$((POLL + 1))
+                    done
+
+                    echo "Final deployment command status: ${STATUS}"
+
+                    echo "=== ANSIBLE DEPLOYMENT OUTPUT ==="
+
+                    aws ssm get-command-invocation \
+                      --command-id "${COMMAND_ID}" \
+                      --instance-id "${ANSIBLE_INSTANCE_ID}" \
+                      --region "${AWS_REGION}" \
+                      --query 'StandardOutputContent' \
+                      --output text
+
+                    if [ "${STATUS}" != "Success" ]; then
+                        echo "=== ANSIBLE DEPLOYMENT ERROR ==="
+
+                        aws ssm get-command-invocation \
+                          --command-id "${COMMAND_ID}" \
+                          --instance-id "${ANSIBLE_INSTANCE_ID}" \
+                          --region "${AWS_REGION}" \
+                          --query 'StandardErrorContent' \
+                          --output text
+
+                        exit 1
+                    fi
+
+                    echo "PASS: ${NEXUS_IMAGE} deployed to ${DEPLOY_ENVIRONMENT}"
+                '''
+            }
+        }
+
     }
 
     post {
