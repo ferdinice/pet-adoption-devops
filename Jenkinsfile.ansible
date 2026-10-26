@@ -188,11 +188,7 @@ pipeline {
                     cat > /tmp/ansible-deploy-commands.json <<EOF
 {
   "commands": [
-    "set -e",
-    "sudo -iu ubuntu git -C /opt/ansible/repo fetch origin",
-    "sudo -iu ubuntu git -C /opt/ansible/repo reset --hard origin/main",
-    "sudo -iu ubuntu ansible-playbook /opt/ansible/repo/module/ansible/playbooks/configure.yml -e target_env=${DEPLOY_ENVIRONMENT}",
-    "sudo -iu ubuntu ansible-playbook /opt/ansible/repo/module/ansible/playbooks/deploy.yml -e target_env=${DEPLOY_ENVIRONMENT} -e app_image_tag=${IMAGE_TAG}"
+    "sudo /usr/local/bin/managed-deploy deploy ${DEPLOY_ENVIRONMENT} ${IMAGE_TAG}"
   ]
 }
 EOF
@@ -272,9 +268,7 @@ EOF
                 '''
             }
         }
-
-
-        stage('Approve Production Deployment') {
+stage('Approve Production Deployment') {
             steps {
                 timeout(time: 30, unit: 'MINUTES') {
                     input message: 'Promote the verified staging image to production?',
@@ -325,11 +319,7 @@ EOF
                     cat > /tmp/ansible-deploy-commands.json <<EOF
 {
   "commands": [
-    "set -e",
-    "sudo -iu ubuntu git -C /opt/ansible/repo fetch origin",
-    "sudo -iu ubuntu git -C /opt/ansible/repo reset --hard origin/main",
-    "sudo -iu ubuntu ansible-playbook /opt/ansible/repo/module/ansible/playbooks/configure.yml -e target_env=${DEPLOY_ENVIRONMENT}",
-    "sudo -iu ubuntu ansible-playbook /opt/ansible/repo/module/ansible/playbooks/deploy.yml -e target_env=${DEPLOY_ENVIRONMENT} -e app_image_tag=${IMAGE_TAG}"
+    "sudo /usr/local/bin/managed-deploy deploy ${DEPLOY_ENVIRONMENT} ${IMAGE_TAG}"
   ]
 }
 EOF
@@ -409,8 +399,7 @@ EOF
                 '''
             }
         }
-
-    }
+}
 
     post {
         success {
